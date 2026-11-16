@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrderStatus } from '../../../common/enums/order.enums.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 import { CreateOrderRepositoryInputDto } from './dto/create-order-repository-input.dto.js';
 import {
   InstrumentOrderContextRepositoryDto,
@@ -11,14 +12,18 @@ import { OrderRepositoryResponseDto } from './dto/order-repository-response.dto.
 
 @Injectable()
 export class OrdersRepository {
+  constructor(private readonly telemetry: TelemetryService) {}
+
   async acquireAccountLock(
     userId: number,
     transaction: Prisma.TransactionClient,
   ): Promise<boolean> {
-    const users = await transaction.$queryRaw<Array<{ id: number }>>(
-      Prisma.sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`,
-    );
-    return users.length === 1;
+    return this.databaseSpan('acquire_account_lock', 'queryRaw', async () => {
+      const users = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`,
+      );
+      return users.length === 1;
+    });
   }
 
   async getOrderContext(
@@ -26,48 +31,54 @@ export class OrdersRepository {
     instrumentId: number,
     transaction: Prisma.TransactionClient,
   ): Promise<OrderContextRepositoryDto> {
-    const instrument = await transaction.instrument.findUnique({
-      where: { id: instrumentId },
-      include: {
-        marketdata: {
-          orderBy: [{ date: 'desc' }, { id: 'desc' }],
-          take: 1,
-        },
-      },
-    });
-    const orders = await transaction.order.findMany({
-      where: {
-        userId,
-        status: { in: [OrderStatus.Filled, OrderStatus.New] },
-      },
-      select: {
-        instrumentId: true,
-        size: true,
-        price: true,
-        side: true,
-        status: true,
-      },
-    });
+    return this.databaseSpan(
+      'get_order_context',
+      'findUnique+findMany',
+      async () => {
+        const instrument = await transaction.instrument.findUnique({
+          where: { id: instrumentId },
+          include: {
+            marketdata: {
+              orderBy: [{ date: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+          },
+        });
+        const orders = await transaction.order.findMany({
+          where: {
+            userId,
+            status: { in: [OrderStatus.Filled, OrderStatus.New] },
+          },
+          select: {
+            instrumentId: true,
+            size: true,
+            price: true,
+            side: true,
+            status: true,
+          },
+        });
 
-    return new OrderContextRepositoryDto(
-      instrument
-        ? new InstrumentOrderContextRepositoryDto(
-            instrument.id,
-            instrument.name,
-            instrument.type,
-            instrument.marketdata[0]?.close?.toFixed(2) ?? null,
-          )
-        : null,
-      orders.map(
-        (order) =>
-          new OrderMovementRepositoryDto(
-            order.instrumentId,
-            order.size,
-            order.price?.toFixed(2) ?? null,
-            order.side,
-            order.status,
+        return new OrderContextRepositoryDto(
+          instrument
+            ? new InstrumentOrderContextRepositoryDto(
+                instrument.id,
+                instrument.name,
+                instrument.type,
+                instrument.marketdata[0]?.close?.toFixed(2) ?? null,
+              )
+            : null,
+          orders.map(
+            (order) =>
+              new OrderMovementRepositoryDto(
+                order.instrumentId,
+                order.size,
+                order.price?.toFixed(2) ?? null,
+                order.side,
+                order.status,
+              ),
           ),
-      ),
+        );
+      },
     );
   }
 
@@ -75,19 +86,21 @@ export class OrdersRepository {
     input: CreateOrderRepositoryInputDto,
     transaction: Prisma.TransactionClient,
   ): Promise<OrderRepositoryResponseDto> {
-    const order = await transaction.order.create({
-      data: {
-        userId: input.userId,
-        instrumentId: input.instrumentId,
-        size: input.size,
-        price: input.price,
-        type: input.type,
-        side: input.side,
-        status: input.status,
-        datetime: input.datetime,
-      },
+    return this.databaseSpan('create_order', 'create', async () => {
+      const order = await transaction.order.create({
+        data: {
+          userId: input.userId,
+          instrumentId: input.instrumentId,
+          size: input.size,
+          price: input.price,
+          type: input.type,
+          side: input.side,
+          status: input.status,
+          datetime: input.datetime,
+        },
+      });
+      return this.mapOrder(order);
     });
-    return this.mapOrder(order);
   }
 
   async findForCancellation(
@@ -95,10 +108,16 @@ export class OrdersRepository {
     orderId: number,
     transaction: Prisma.TransactionClient,
   ): Promise<OrderRepositoryResponseDto | null> {
-    const order = await transaction.order.findFirst({
-      where: { id: orderId, userId },
-    });
-    return order ? this.mapOrder(order) : null;
+    return this.databaseSpan(
+      'find_order_for_cancellation',
+      'findFirst',
+      async () => {
+        const order = await transaction.order.findFirst({
+          where: { id: orderId, userId },
+        });
+        return order ? this.mapOrder(order) : null;
+      },
+    );
   }
 
   async cancel(
@@ -106,18 +125,40 @@ export class OrdersRepository {
     orderId: number,
     transaction: Prisma.TransactionClient,
   ): Promise<OrderRepositoryResponseDto | null> {
-    const result = await transaction.order.updateMany({
-      where: { id: orderId, userId, status: OrderStatus.New },
-      data: { status: OrderStatus.Cancelled },
-    });
-    if (result.count !== 1) {
-      return null;
-    }
+    return this.databaseSpan(
+      'cancel_order',
+      'updateMany+findUnique',
+      async () => {
+        const result = await transaction.order.updateMany({
+          where: { id: orderId, userId, status: OrderStatus.New },
+          data: { status: OrderStatus.Cancelled },
+        });
+        if (result.count !== 1) {
+          return null;
+        }
 
-    const order = await transaction.order.findUnique({
-      where: { id: orderId },
-    });
-    return order ? this.mapOrder(order) : null;
+        const order = await transaction.order.findUnique({
+          where: { id: orderId },
+        });
+        return order ? this.mapOrder(order) : null;
+      },
+    );
+  }
+
+  private databaseSpan<T>(
+    operation: string,
+    databaseOperation: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    return this.telemetry.runInSpan(
+      `db.orders.${operation}`,
+      {
+        'app.repository': 'OrdersRepository',
+        'db.system.name': 'postgresql',
+        'db.operation.name': databaseOperation,
+      },
+      callback,
+    );
   }
 
   private mapOrder(order: {

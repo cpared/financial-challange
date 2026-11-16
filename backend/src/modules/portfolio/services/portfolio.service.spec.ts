@@ -20,6 +20,7 @@ import { PositionQuantityCalculator } from '../../../common/domain/positions/pos
 import { PositionCalculator } from '../domain/position-calculator.js';
 import { COST_BASIS_STRATEGY } from '../domain/cost-basis/cost-basis.strategy.js';
 import { WeightedAverageStrategy } from '../domain/cost-basis/weighted-average.strategy.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 
 const userId = 1;
 const instrumentId = 47;
@@ -44,6 +45,7 @@ describe('PortfolioService', () => {
         WeightedAverageStrategy,
         { provide: COST_BASIS_STRATEGY, useExisting: WeightedAverageStrategy },
         { provide: PortfolioRepository, useValue: repository },
+        TelemetryService,
       ],
     }).compile();
     service = module.get(PortfolioService);

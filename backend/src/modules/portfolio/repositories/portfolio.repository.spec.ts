@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service.js';
 import { PortfolioRepository } from './portfolio.repository.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 
 describe('PortfolioRepository', () => {
   let repository: PortfolioRepository;
@@ -17,6 +18,7 @@ describe('PortfolioRepository', () => {
       providers: [
         PortfolioRepository,
         { provide: PrismaService, useValue: prisma },
+        TelemetryService,
       ],
     }).compile();
     repository = module.get(PortfolioRepository);

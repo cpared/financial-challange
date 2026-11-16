@@ -3,13 +3,14 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { OrderSide, OrderStatus } from '../../../common/enums/order.enums.js';
 import { CreateOrderRepositoryInputDto } from './dto/create-order-repository-input.dto.js';
 import { OrdersRepository } from './orders.repository.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 
 describe('OrdersRepository', () => {
   let repository: OrdersRepository;
   let transaction: PrismaClient;
 
   beforeEach(() => {
-    repository = new OrdersRepository();
+    repository = new OrdersRepository(new TelemetryService());
     transaction = new PrismaClient();
   });
 

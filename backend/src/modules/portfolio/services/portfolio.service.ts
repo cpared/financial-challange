@@ -10,6 +10,7 @@ import {
   PortfolioDataIntegrityError,
   PortfolioMarketDataUnavailableError,
 } from '../domain/portfolio-errors.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 import {
   PortfolioPositionServiceResponseDto,
   PortfolioServiceResponseDto,
@@ -20,9 +21,20 @@ export class PortfolioService {
   constructor(
     private readonly portfolioRepository: PortfolioRepository,
     private readonly portfolioCalculator: PortfolioCalculator,
+    private readonly telemetry: TelemetryService,
   ) {}
 
   async getPortfolio(userId: number): Promise<PortfolioServiceResponseDto> {
+    return this.telemetry.runInSpan(
+      'portfolio.get',
+      { 'app.layer': 'service' },
+      () => this.calculatePortfolio(userId),
+    );
+  }
+
+  private async calculatePortfolio(
+    userId: number,
+  ): Promise<PortfolioServiceResponseDto> {
     const repositoryResponse =
       await this.portfolioRepository.findByUserId(userId);
     if (!repositoryResponse.userExists) {
