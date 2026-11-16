@@ -4,18 +4,20 @@ export class PortfolioInstrumentRepositoryDto {
     public readonly ticker: string | null,
     public readonly name: string | null,
     public readonly type: string | null,
-    public readonly close: number | null,
-    public readonly previousClose: number | null,
+    public readonly close: string | null,
+    public readonly previousClose: string | null,
   ) {}
 }
 
 export class PortfolioOrderRepositoryDto {
   constructor(
+    public readonly id: number,
     public readonly instrumentId: number | null,
     public readonly size: number | null,
-    public readonly price: number | null,
+    public readonly price: string | null,
     public readonly side: string | null,
     public readonly status: string | null,
+    public readonly datetime: Date | null,
     public readonly instrument: PortfolioInstrumentRepositoryDto | null,
   ) {}
 }

@@ -66,11 +66,13 @@ describe('PortfolioRepository', () => {
       userExists: true,
       orders: [
         {
-          price: 100,
+          id: 1,
+          price: '100.00',
+          datetime: new Date('2026-01-01'),
           instrument: {
             ticker: 'BBAR',
-            close: 110,
-            previousClose: 100,
+            close: '110.00',
+            previousClose: '100.00',
           },
         },
       ],
@@ -78,6 +80,7 @@ describe('PortfolioRepository', () => {
     expect(prisma.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 1, status: { in: ['FILLED', 'NEW'] } },
+        orderBy: [{ datetime: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
       }),
     );
   });

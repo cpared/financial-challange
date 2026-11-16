@@ -3,7 +3,7 @@ import { OrderSide, OrderStatus } from '../enums/order.enums.js';
 
 export interface CashOrderMovement {
   readonly size: number | null;
-  readonly price: number | null;
+  readonly price: number | string | null;
   readonly side: string | null;
   readonly status: string | null;
 }
@@ -78,7 +78,7 @@ export function calculateCashBalance(
   };
 }
 
-function requirePrice(price: number | null): number {
+function requirePrice(price: number | string | null): number | string {
   if (price === null) {
     throw new InternalServerErrorException(
       'An existing trade order has no recorded price.',

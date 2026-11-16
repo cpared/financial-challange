@@ -7,6 +7,8 @@ export class PortfolioPositionResponseDto {
     public readonly name: string | null,
     public readonly quantity: number,
     public readonly marketValueArs: number,
+    public readonly totalReturnArs: number,
+    public readonly totalReturnPercent: number | null,
     public readonly dailyReturnPercent: number | null,
   ) {}
 
@@ -18,8 +20,12 @@ export class PortfolioPositionResponseDto {
       position.ticker,
       position.name,
       position.quantity,
-      position.marketValueArs,
-      position.dailyReturnPercent,
+      Number(position.marketValueArs),
+      Number(position.totalReturnArs),
+      position.totalReturnPercent === null
+        ? null
+        : Number(position.totalReturnPercent),
+      Number(position.dailyReturnPercent),
     );
   }
 }
@@ -35,8 +41,8 @@ export class PortfolioResponseDto {
   static map(portfolio: PortfolioServiceResponseDto): PortfolioResponseDto {
     return new PortfolioResponseDto(
       portfolio.userId,
-      portfolio.totalAccountValueArs,
-      portfolio.availableCashArs,
+      Number(portfolio.totalAccountValueArs),
+      Number(portfolio.availableCashArs),
       portfolio.positions.map((position) =>
         PortfolioPositionResponseDto.map(position),
       ),

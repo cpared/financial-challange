@@ -6,23 +6,25 @@ export class PortfolioPositionServiceResponseDto {
     public readonly ticker: string | null,
     public readonly name: string | null,
     public readonly quantity: number,
-    public readonly marketValueArs: number,
-    public readonly dailyReturnPercent: number | null,
+    public readonly marketValueArs: string,
+    public readonly totalReturnArs: string,
+    public readonly totalReturnPercent: string | null,
+    public readonly dailyReturnPercent: string,
   ) {}
 }
 
 export class PortfolioServiceResponseDto {
   constructor(
     public readonly userId: number,
-    public readonly totalAccountValueArs: number,
-    public readonly availableCashArs: number,
+    public readonly totalAccountValueArs: string,
+    public readonly availableCashArs: string,
     public readonly positions: PortfolioPositionServiceResponseDto[],
   ) {}
 
   static fromRepository(
     repositoryResponse: PortfolioRepositoryResponseDto,
-    totalAccountValueArs: number,
-    availableCashArs: number,
+    totalAccountValueArs: string,
+    availableCashArs: string,
     positions: PortfolioPositionServiceResponseDto[],
   ): PortfolioServiceResponseDto {
     return new PortfolioServiceResponseDto(

@@ -4,6 +4,10 @@
 ### Get portfolio - user with seeded activity (200)
 GET {{baseUrl}}/users/{{userId}}/portfolio
 
+### Response includes totalReturnArs/totalReturnPercent (position's unrealized return)
+### dailyReturnPercent remains the instrument's close-vs-previousClose return.
+### Example position: {"quantity":10,"marketValueArs":1800,"totalReturnArs":300,"totalReturnPercent":20,"dailyReturnPercent":1.5}
+
 ### Get portfolio - user without activity (200, zero balance and no positions)
 GET {{baseUrl}}/users/2/portfolio
 

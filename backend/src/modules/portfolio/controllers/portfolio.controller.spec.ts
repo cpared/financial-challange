@@ -21,14 +21,16 @@ describe('PortfolioController', () => {
 
   it('maps the service response to the HTTP contract', async () => {
     service.getPortfolio.mockResolvedValue(
-      new PortfolioServiceResponseDto(1, 920, 650, [
+      new PortfolioServiceResponseDto(1, '920.00', '650.00', [
         {
           instrumentId: 47,
           ticker: 'BBAR',
           name: 'Banco Frances',
           quantity: 2,
-          marketValueArs: 220,
-          dailyReturnPercent: 10,
+          marketValueArs: '220.00',
+          totalReturnArs: '20.00',
+          totalReturnPercent: '10.00',
+          dailyReturnPercent: '10.00',
         },
       ]),
     );
@@ -37,7 +39,15 @@ describe('PortfolioController', () => {
       userId: 1,
       totalAccountValueArs: 920,
       availableCashArs: 650,
-      positions: [{ quantity: 2, marketValueArs: 220 }],
+      positions: [
+        {
+          quantity: 2,
+          marketValueArs: 220,
+          totalReturnArs: 20,
+          totalReturnPercent: 10,
+          dailyReturnPercent: 10,
+        },
+      ],
     });
     expect(service.getPortfolio).toHaveBeenCalledWith(1);
   });
