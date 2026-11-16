@@ -13,6 +13,12 @@ import {
   PortfolioRepositoryResponseDto,
 } from '../repositories/dto/portfolio-repository-response.dto.js';
 import { PortfolioService } from './portfolio.service.js';
+import { PortfolioCalculator } from '../domain/portfolio-calculator.js';
+import { PortfolioValidator } from '../domain/portfolio-validator.js';
+import { CashCalculator } from '../domain/cash-calculator.js';
+import { PositionCalculator } from '../domain/position-calculator.js';
+import { COST_BASIS_STRATEGY } from '../domain/cost-basis/cost-basis.strategy.js';
+import { WeightedAverageStrategy } from '../domain/cost-basis/weighted-average.strategy.js';
 
 const userId = 1;
 const instrumentId = 47;
@@ -29,6 +35,12 @@ describe('PortfolioService', () => {
     const module = await Test.createTestingModule({
       providers: [
         PortfolioService,
+        PortfolioCalculator,
+        PortfolioValidator,
+        CashCalculator,
+        PositionCalculator,
+        WeightedAverageStrategy,
+        { provide: COST_BASIS_STRATEGY, useExisting: WeightedAverageStrategy },
         { provide: PortfolioRepository, useValue: repository },
       ],
     }).compile();

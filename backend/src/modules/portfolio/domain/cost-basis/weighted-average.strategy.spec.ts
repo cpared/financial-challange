@@ -1,13 +1,13 @@
-import { OrderSide } from '../../../common/enums/order.enums.js';
+import { OrderSide } from '../../../../common/enums/order.enums.js';
 import {
   calculateTotalPositionReturn,
   calculateWeightedAverageCostBasis,
   formatPercent,
   formatRationalCents,
   rational,
-} from './weighted-average-cost.js';
+} from './weighted-average.strategy.js';
 
-describe('weighted-average-cost', () => {
+describe('WeightedAverageStrategy', () => {
   it('calculates return percentage as null when acquisition cost is zero', () => {
     const result = calculateTotalPositionReturn(100n, rational(0n, 1n));
 

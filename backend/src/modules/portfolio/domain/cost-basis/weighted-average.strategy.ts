@@ -1,27 +1,20 @@
-import { OrderSide } from '../../../common/enums/order.enums.js';
+import { Injectable } from '@nestjs/common';
+import { OrderSide } from '../../../../common/enums/order.enums.js';
+import type {
+  CostBasisStrategy,
+  FilledTrade,
+  PositionCostBasis,
+  RationalAmount,
+  TotalPositionReturn,
+} from './cost-basis.strategy.js';
 
-export interface FilledTrade {
-  readonly instrumentId: number;
-  readonly orderId: number;
-  readonly datetime: Date;
-  readonly side: OrderSide.Buy | OrderSide.Sell;
-  readonly quantity: bigint;
-  readonly priceInCents: bigint;
-}
-
-export interface RationalAmount {
-  readonly numerator: bigint;
-  readonly denominator: bigint;
-}
-
-export interface PositionCostBasis {
-  readonly quantity: bigint;
-  readonly acquisitionCostInCents: RationalAmount;
-}
-
-export interface TotalPositionReturn {
-  readonly profitInCents: RationalAmount;
-  readonly returnPercent: string | null;
+@Injectable()
+export class WeightedAverageStrategy implements CostBasisStrategy {
+  calculate(
+    trades: readonly FilledTrade[],
+  ): ReadonlyMap<number, PositionCostBasis> {
+    return calculateWeightedAverageCostBasis(trades);
+  }
 }
 
 export function calculateWeightedAverageCostBasis(
@@ -33,14 +26,21 @@ export function calculateWeightedAverageCostBasis(
     const position = positions.get(trade.instrumentId) ?? {
       quantity: 0n,
       acquisitionCostInCents: rational(0n, 1n),
+      unitCostInCents: null,
     };
 
     if (trade.side === OrderSide.Buy) {
+      const quantity = position.quantity + trade.quantity;
+      const acquisitionCostInCents = add(
+        position.acquisitionCostInCents,
+        rational(trade.quantity * trade.priceInCents, 1n),
+      );
       positions.set(trade.instrumentId, {
-        quantity: position.quantity + trade.quantity,
-        acquisitionCostInCents: add(
-          position.acquisitionCostInCents,
-          rational(trade.quantity * trade.priceInCents, 1n),
+        quantity,
+        acquisitionCostInCents,
+        unitCostInCents: rational(
+          acquisitionCostInCents.numerator,
+          acquisitionCostInCents.denominator * quantity,
         ),
       });
       continue;
@@ -50,15 +50,23 @@ export function calculateWeightedAverageCostBasis(
       throw new RangeError('Filled sale exceeds the available position.');
     }
     const remainingQuantity = position.quantity - trade.quantity;
+    const acquisitionCostInCents =
+      remainingQuantity === 0n
+        ? rational(0n, 1n)
+        : multiplyRatio(
+            position.acquisitionCostInCents,
+            remainingQuantity,
+            position.quantity,
+          );
     positions.set(trade.instrumentId, {
       quantity: remainingQuantity,
-      acquisitionCostInCents:
+      acquisitionCostInCents,
+      unitCostInCents:
         remainingQuantity === 0n
-          ? rational(0n, 1n)
-          : multiplyRatio(
-              position.acquisitionCostInCents,
-              remainingQuantity,
-              position.quantity,
+          ? null
+          : rational(
+              acquisitionCostInCents.numerator,
+              acquisitionCostInCents.denominator * remainingQuantity,
             ),
     });
   }
