@@ -52,6 +52,38 @@ Las credenciales por defecto del Compose son solo para desarrollo local; se pued
 La API escucha en `PORT` (por defecto `3000`) y todos los endpoints usan el prefijo `/api/v1`.
 La configuración valida `DATABASE_URL` y `PORT` al iniciar.
 
+## Request context y tracing
+
+Cada solicitud recibe un `X-Request-ID` validado o generado como UUID. El
+identificador se devuelve en la respuesta y queda disponible en toda la cadena
+asíncrona mediante `RequestContextService`. Los `traceparent` W3C válidos se
+propagan; cuando OpenTelemetry está activo, la respuesta devuelve también el
+`traceparent` del span HTTP. El ID de solicitud identifica una petición y el
+trace ID puede abarcar varias operaciones distribuidas; no son intercambiables.
+
+OpenTelemetry está desactivado por defecto y no requiere un collector para
+iniciar el backend. Para habilitar exportación OTLP, configurar en `.env`:
+
+```dotenv
+OTEL_ENABLED=true
+OTEL_SERVICE_NAME=backend-api
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+Con `OTEL_ENABLED=true`, `OTEL_TRACES_EXPORTER=none` activa la propagación y
+generación local de spans sin exportarlos. Se habilita la instrumentación HTTP
+oficial y el middleware garantiza un span servidor si no hay uno activo; los
+servicios y repositorios instrumentan los casos de uso y operaciones Prisma.
+Prisma 6 utiliza su propio query engine, por lo que la instrumentación del
+driver Node `pg` no observa estas consultas. Los spans de repositorio registran
+operación y sistema de base de datos, no SQL, parámetros ni datos financieros.
+
+Los logs se emiten como JSON e incluyen `requestId`, `traceId` y `spanId` cuando
+están disponibles. El filtro global registra el tipo de error sin exponer
+mensajes internos y mantiene el formato HTTP ya establecido. No hay autenticación
+en esta API; por eso el contexto no asigna `userId`.
+
 ## Endpoints
 
 | Método | Ruta | Descripción |

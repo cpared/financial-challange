@@ -14,6 +14,7 @@ import {
   InvalidFinancialDataError,
   MissingTradePriceError,
 } from '../../../common/domain/financial-data-error.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 import {
   OrderSide,
   OrderStatus,
@@ -34,9 +35,20 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly cashCalculator: CashCalculator,
     private readonly positionQuantityCalculator: PositionQuantityCalculator,
+    private readonly telemetry: TelemetryService,
   ) {}
 
   async create(
+    input: CreateOrderServiceInputDto,
+  ): Promise<OrderServiceResponseDto> {
+    return this.telemetry.runInSpan(
+      'orders.create',
+      { 'app.layer': 'service' },
+      () => this.createOrder(input),
+    );
+  }
+
+  private async createOrder(
     input: CreateOrderServiceInputDto,
   ): Promise<OrderServiceResponseDto> {
     if (input.side !== OrderSide.Buy && input.side !== OrderSide.Sell) {
@@ -172,6 +184,17 @@ export class OrdersService {
   }
 
   async cancel(
+    userId: number,
+    orderId: number,
+  ): Promise<OrderServiceResponseDto> {
+    return this.telemetry.runInSpan(
+      'orders.cancel',
+      { 'app.layer': 'service' },
+      () => this.cancelOrder(userId, orderId),
+    );
+  }
+
+  private async cancelOrder(
     userId: number,
     orderId: number,
   ): Promise<OrderServiceResponseDto> {

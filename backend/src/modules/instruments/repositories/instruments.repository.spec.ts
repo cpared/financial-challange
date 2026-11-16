@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../../database/prisma.service.js';
 import { InstrumentsRepository } from './instruments.repository.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 
 describe('InstrumentsRepository', () => {
   let repository: InstrumentsRepository;
@@ -17,6 +18,7 @@ describe('InstrumentsRepository', () => {
       providers: [
         InstrumentsRepository,
         { provide: PrismaService, useValue: prisma },
+        TelemetryService,
       ],
     }).compile();
     repository = module.get(InstrumentsRepository);

@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../../database/prisma.service.js';
 import { CashCalculator } from '../../../common/domain/cash/cash-calculator.js';
 import { PositionQuantityCalculator } from '../../../common/domain/positions/position-quantity-calculator.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 import {
   OrderSide,
   OrderStatus,
@@ -50,6 +51,7 @@ describe('OrdersService', () => {
         { provide: PrismaService, useValue: prisma },
         CashCalculator,
         PositionQuantityCalculator,
+        TelemetryService,
       ],
     }).compile();
     service = module.get(OrdersService);

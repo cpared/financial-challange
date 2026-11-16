@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { InstrumentsRepository } from '../repositories/instruments.repository.js';
 import { InstrumentRepositoryResponseDto } from '../repositories/dto/instrument-repository-response.dto.js';
 import { InstrumentsService } from './instruments.service.js';
+import { TelemetryService } from '../../../common/observability/telemetry.service.js';
 
 describe('InstrumentsService', () => {
   let service: InstrumentsService;
@@ -16,6 +17,7 @@ describe('InstrumentsService', () => {
       providers: [
         InstrumentsService,
         { provide: InstrumentsRepository, useValue: repository },
+        TelemetryService,
       ],
     }).compile();
     service = module.get(InstrumentsService);
