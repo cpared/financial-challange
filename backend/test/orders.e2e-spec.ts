@@ -5,6 +5,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/database/prisma.service.js';
+import { OrdersRepository } from '../src/modules/orders/repositories/orders.repository.js';
+import { OrderContextRepositoryDto } from '../src/modules/orders/repositories/dto/order-context-repository.dto.js';
+import { InstrumentOrderContextRepositoryDto } from '../src/modules/orders/repositories/dto/order-context-repository.dto.js';
+import { CreateOrderRepositoryInputDto } from '../src/modules/orders/repositories/dto/create-order-repository-input.dto.js';
+import { OrderRepositoryResponseDto } from '../src/modules/orders/repositories/dto/order-repository-response.dto.js';
 
 describe('Orders API (e2e)', () => {
   let app: INestApplication;
@@ -15,69 +20,57 @@ describe('Orders API (e2e)', () => {
         operation(transactionClient),
     ),
   };
-  const createOrderSpy = jest.spyOn(transactionClient.order, 'create');
+  const ordersRepositoryMock = {
+    acquireAccountLock: jest.fn<OrdersRepository['acquireAccountLock']>(),
+    getOrderContext: jest.fn<OrdersRepository['getOrderContext']>(),
+    create: jest.fn<OrdersRepository['create']>(),
+    findForCancellation: jest.fn<OrdersRepository['findForCancellation']>(),
+    cancel: jest.fn<OrdersRepository['cancel']>(),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   beforeAll(async () => {
-    jest.spyOn(transactionClient.user, 'findUnique').mockResolvedValue({
-      id: 1,
-      email: null,
-      accountNumber: null,
-    });
-    const instrumentRecord = {
-      id: 47,
-      ticker: 'BBAR',
-      name: 'Banco Frances',
-      type: 'ACCIONES',
-      marketdata: [
-        {
-          id: 1,
-          instrumentId: 47,
-          high: null,
-          low: null,
-          open: null,
-          close: new Prisma.Decimal(100),
-          previousClose: new Prisma.Decimal(95),
-          date: new Date('2026-01-01'),
-        },
-      ],
-    };
-    jest
-      .spyOn(transactionClient.instrument, 'findUnique')
-      .mockResolvedValue(instrumentRecord);
-    jest.spyOn(transactionClient.order, 'findMany').mockResolvedValue([
-      {
-        id: 1,
-        instrumentId: 66,
-        userId: 1,
-        size: 1000,
-        price: new Prisma.Decimal(1),
-        type: 'MARKET',
-        side: 'CASH_IN',
-        status: 'FILLED',
-        datetime: new Date('2026-01-01'),
-      },
-    ]);
-    createOrderSpy.mockResolvedValue({
-      id: 99,
-      instrumentId: 47,
-      userId: 1,
-      size: 2,
-      price: new Prisma.Decimal(100),
-      type: 'MARKET',
-      side: 'BUY',
-      status: 'FILLED',
-      datetime: new Date('2026-01-01T10:00:00.000Z'),
-    });
+    ordersRepositoryMock.acquireAccountLock.mockResolvedValue(true);
+    ordersRepositoryMock.getOrderContext.mockResolvedValue(
+      new OrderContextRepositoryDto(
+        new InstrumentOrderContextRepositoryDto(
+          47,
+          'Banco Frances',
+          'ACCIONES',
+          '100.00',
+        ),
+        '100000',
+        '0',
+        '0',
+        '0',
+        false,
+      ),
+    );
+    ordersRepositoryMock.create.mockImplementation(
+      async (input: CreateOrderRepositoryInputDto) =>
+        new OrderRepositoryResponseDto(
+          99,
+          input.instrumentId,
+          input.userId,
+          input.size,
+          input.price,
+          input.type,
+          input.side,
+          input.status,
+          input.datetime,
+        ),
+    );
 
     const module = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
+      .overrideProvider(OrdersRepository)
+      .useValue(ordersRepositoryMock)
       .compile();
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -118,7 +111,7 @@ describe('Orders API (e2e)', () => {
       });
   });
 
-  it('rejects invalid LIMIT input before persisting an order', async () => {
+  it('rejects invalid LIMIT input before acquiring or persisting an order', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/users/1/orders')
       .send({
@@ -129,6 +122,7 @@ describe('Orders API (e2e)', () => {
       })
       .expect(400);
 
-    expect(createOrderSpy).not.toHaveBeenCalled();
+    expect(ordersRepositoryMock.acquireAccountLock).not.toHaveBeenCalled();
+    expect(ordersRepositoryMock.create).not.toHaveBeenCalled();
   });
 });

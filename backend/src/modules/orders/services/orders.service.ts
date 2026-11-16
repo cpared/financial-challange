@@ -2,14 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service.js';
-import {
-  calculateCashBalance,
-  toCents,
-} from '../../../common/utils/cash-balance.js';
+import { centsToDecimal, toCents } from '../../../common/utils/cash-balance.js';
 import {
   OrderSide,
   OrderStatus,
@@ -20,8 +18,8 @@ import { OrdersRepository } from '../repositories/orders.repository.js';
 import { CreateOrderServiceInputDto } from './dto/create-order-service-input.dto.js';
 import { OrderServiceResponseDto } from './dto/order-service-response.dto.js';
 
-const SERIALIZATION_RETRIES = 3;
-const MAX_ORDER_SIZE = 2_147_483_647;
+const MAX_ORDER_SIZE = 2_147_483_647n;
+const MAX_NUMERIC_CENTS = 9_999_999_999n;
 
 @Injectable()
 export class OrdersService {
@@ -33,16 +31,32 @@ export class OrdersService {
   async create(
     input: CreateOrderServiceInputDto,
   ): Promise<OrderServiceResponseDto> {
-    return this.runSerializableTransaction(async (transaction) => {
+    if (input.side !== OrderSide.Buy && input.side !== OrderSide.Sell) {
+      throw new BadRequestException('side must be BUY or SELL.');
+    }
+    if (input.type !== OrderType.Market && input.type !== OrderType.Limit) {
+      throw new BadRequestException('type must be MARKET or LIMIT.');
+    }
+    if ((input.quantity === undefined) === (input.amountArs === undefined)) {
+      throw new BadRequestException(
+        'Provide exactly one of quantity or amountArs.',
+      );
+    }
+
+    return this.runAccountTransaction(async (transaction) => {
+      const userExists = await this.ordersRepository.acquireAccountLock(
+        input.userId,
+        transaction,
+      );
+      if (!userExists) {
+        throw new NotFoundException(`User ${input.userId} was not found.`);
+      }
+
       const context = await this.ordersRepository.getOrderContext(
         input.userId,
         input.instrumentId,
         transaction,
       );
-
-      if (!context.userExists) {
-        throw new NotFoundException(`User ${input.userId} was not found.`);
-      }
       if (!context.instrument) {
         throw new NotFoundException(
           `Instrument ${input.instrumentId} was not found.`,
@@ -53,43 +67,67 @@ export class OrdersService {
           'Orders can only be placed for tradable instruments.',
         );
       }
-      if (context.instrument.close === null || context.instrument.close <= 0) {
-        throw new ConflictException(
-          'The instrument does not have a current market price.',
-        );
-      }
 
-      const price =
-        input.type === OrderType.Market
-          ? context.instrument.close
-          : input.limitPrice;
-      if (price === undefined || price <= 0) {
-        throw new BadRequestException('LIMIT orders require a positive price.');
-      }
-
-      const priceInCents = toCents(price);
-      const size =
-        input.quantity ??
-        Math.floor(toCents(input.amountArs ?? 0) / priceInCents);
-      if (!Number.isSafeInteger(size) || size < 1 || size > MAX_ORDER_SIZE) {
-        if (size > MAX_ORDER_SIZE) {
-          throw new BadRequestException(
-            'The requested order exceeds the maximum supported share quantity.',
+      let priceInCents: bigint;
+      if (input.type === OrderType.Market) {
+        if (context.instrument.close === null) {
+          throw new ConflictException(
+            'The instrument does not have a current market price.',
           );
         }
-        throw new BadRequestException(
-          'The requested amount is not enough to buy or sell one share.',
+        priceInCents = toCents(context.instrument.close);
+        if (priceInCents <= 0n) {
+          throw new ConflictException(
+            'The instrument does not have a valid current market price.',
+          );
+        }
+      } else {
+        if (input.limitPrice === undefined) {
+          throw new BadRequestException('LIMIT orders require a price.');
+        }
+        priceInCents = this.parsePositiveMoney(input.limitPrice, 'Limit price');
+      }
+
+      if (context.hasMissingTradePrice) {
+        throw new InternalServerErrorException(
+          'An existing trade order has no recorded price.',
         );
       }
 
-      const totalValueInCents = size * priceInCents;
-      const isBuy = input.side === OrderSide.Buy;
-      const enoughResources = isBuy
-        ? totalValueInCents <=
-          calculateCashBalance(context.orders).availableCashInCents
-        : size <=
-          this.calculateAvailableQuantity(context.orders, input.instrumentId);
-      const status = !enoughResources
+      let requestedSize: bigint;
+      if (input.quantity === undefined) {
+        if (input.amountArs === undefined) {
+          throw new BadRequestException(
+            'Provide exactly one of quantity or amountArs.',
+          );
+        }
+        requestedSize =
+          this.parsePositiveMoney(input.amountArs, 'amountArs') / priceInCents;
+      } else {
+        requestedSize = this.parseQuantity(input.quantity);
+      }
+      if (requestedSize < 1n) {
+        throw new BadRequestException(
+          'The requested amount is not enough for one share.',
+        );
+      }
+      if (requestedSize > MAX_ORDER_SIZE) {
+        throw new BadRequestException(
+          'The requested order exceeds the maximum supported share quantity.',
+        );
+      }
+
+      const availableCashInCents =
+        BigInt(context.cashBalanceInCents) -
+        BigInt(context.reservedCashInCents);
+      const availableQuantity =
+        BigInt(context.effectiveQuantity) - BigInt(context.reservedQuantity);
+      const requiredCashInCents = requestedSize * priceInCents;
+      const hasEnoughResources =
+        input.side === OrderSide.Buy
+          ? requiredCashInCents <= availableCashInCents
+          : requestedSize <= availableQuantity;
+      const status = !hasEnoughResources
         ? OrderStatus.Rejected
         : input.type === OrderType.Market
           ? OrderStatus.Filled
@@ -99,8 +137,8 @@ export class OrdersService {
         new CreateOrderRepositoryInputDto(
           input.userId,
           input.instrumentId,
-          size,
-          price,
+          Number(requestedSize),
+          centsToDecimal(priceInCents),
           input.type,
           input.side,
           status,
@@ -116,7 +154,15 @@ export class OrdersService {
     userId: number,
     orderId: number,
   ): Promise<OrderServiceResponseDto> {
-    return this.runSerializableTransaction(async (transaction) => {
+    return this.runAccountTransaction(async (transaction) => {
+      const userExists = await this.ordersRepository.acquireAccountLock(
+        userId,
+        transaction,
+      );
+      if (!userExists) {
+        throw new NotFoundException(`User ${userId} was not found.`);
+      }
+
       const order = await this.ordersRepository.findForCancellation(
         userId,
         orderId,
@@ -143,63 +189,44 @@ export class OrdersService {
     });
   }
 
-  private calculateAvailableQuantity(
-    orders: readonly {
-      instrumentId: number | null;
-      size: number | null;
-      side: string | null;
-      status: string | null;
-    }[],
-    instrumentId: number,
-  ): number {
-    let quantity = 0;
-    for (const order of orders) {
-      if (order.instrumentId !== instrumentId) {
-        continue;
+  private parsePositiveMoney(value: number | string, label: string): bigint {
+    let cents: bigint;
+    try {
+      cents = toCents(value);
+    } catch (error) {
+      if (error instanceof RangeError) {
+        throw new BadRequestException(
+          `${label} must be a positive amount with at most two decimal places.`,
+        );
       }
-      const size = order.size ?? 0;
-      if (order.status === OrderStatus.Filled && order.side === OrderSide.Buy) {
-        quantity += size;
-      } else if (
-        order.status === OrderStatus.Filled &&
-        order.side === OrderSide.Sell
-      ) {
-        quantity -= size;
-      } else if (
-        order.status === OrderStatus.New &&
-        order.side === OrderSide.Sell
-      ) {
-        quantity -= size;
-      }
+      throw error;
     }
-    return quantity;
+    if (cents <= 0n || cents > MAX_NUMERIC_CENTS) {
+      throw new BadRequestException(
+        `${label} must be between 0.01 and 99999999.99.`,
+      );
+    }
+    return cents;
   }
 
-  private async runSerializableTransaction<T>(
+  private parseQuantity(value: number): bigint {
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > Number(MAX_ORDER_SIZE)
+    ) {
+      throw new BadRequestException(
+        'quantity must be an integer between 1 and 2147483647.',
+      );
+    }
+    return BigInt(value);
+  }
+
+  private async runAccountTransaction<T>(
     operation: (transaction: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
-    for (let attempt = 1; attempt <= SERIALIZATION_RETRIES; attempt += 1) {
-      try {
-        return await this.prisma.$transaction(operation, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2034'
-        ) {
-          if (attempt < SERIALIZATION_RETRIES) {
-            continue;
-          }
-          throw new ConflictException(
-            'The account changed during order processing. Please retry.',
-          );
-        }
-        throw error;
-      }
-    }
-    throw new ConflictException(
-      'The account changed during order processing. Please retry.',
-    );
+    return this.prisma.$transaction(operation, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    });
   }
 }

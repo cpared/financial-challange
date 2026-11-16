@@ -3,7 +3,7 @@ export class CreateOrderRepositoryInputDto {
     public readonly userId: number,
     public readonly instrumentId: number,
     public readonly size: number,
-    public readonly price: number,
+    public readonly price: string,
     public readonly type: string,
     public readonly side: string,
     public readonly status: string,

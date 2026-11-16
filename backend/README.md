@@ -5,34 +5,49 @@ API REST desarrollada con NestJS, TypeScript, PostgreSQL y Prisma para el enunci
 ## Requisitos
 
 - Node.js 24.15 o superior (validado con 24.18.1).
-- PostgreSQL compatible con el esquema de `../database.sql`.
+- Docker Engine con Docker Compose.
 
 ## Configuración
 
-1. Instalar dependencias y configurar el entorno:
+1. Levantar PostgreSQL desde `backend/`. Al crear el volumen por primera vez, Compose importa automáticamente `../database.sql` con el esquema y los datos de ejemplo:
+
+   ```bash
+   docker compose up -d db
+   docker compose ps
+   ```
+
+   Esperá que el servicio `db` figure como `healthy`.
+
+2. Instalar dependencias y configurar la conexión local:
 
    ```bash
    npm install
    cp .env.example .env
-   ```
-
-2. Crear la base de datos configurada en `DATABASE_URL` e importar el esquema y los datos de ejemplo:
-
-   ```bash
-   psql "postgresql://postgres:postgres@localhost:5432/cocos_challenge" -f ../database.sql
-   ```
-
-3. Generar el cliente de Prisma:
-
-   ```bash
    npm run db:generate
    ```
 
-4. Iniciar la API:
+   El `.env.example` usa los valores por defecto del servicio Compose y conecta el backend local a `localhost:5432`.
+
+3. Iniciar la API:
 
    ```bash
    npm run start:dev
    ```
+
+Para detener PostgreSQL sin borrar la base:
+
+```bash
+docker compose down
+```
+
+La importación del SQL de inicialización se ejecuta solo cuando el volumen está vacío. Para borrar los datos y volver a inicializar la base desde cero:
+
+```bash
+docker compose down -v
+docker compose up -d db
+```
+
+Las credenciales por defecto del Compose son solo para desarrollo local; se pueden reemplazar mediante `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_PORT` en el entorno.
 
 La API escucha en `PORT` (por defecto `3000`) y todos los endpoints usan el prefijo `/api/v1`.
 La configuración valida `DATABASE_URL` y `PORT` al iniciar.
@@ -74,4 +89,16 @@ npm run typecheck
 npm run lint
 ```
 
-Las pruebas unitarias no requieren una base de datos. La prueba e2e ejercita el endpoint HTTP de creación de órdenes con la capa de persistencia simulada.
+Las pruebas unitarias y `npm run test:e2e` no requieren una base de datos. La prueba e2e normal ejercita el pipeline HTTP con el repositorio simulado.
+
+### Pruebas de concurrencia contra PostgreSQL real
+
+Las pruebas de concurrencia son opt-in y limpian únicamente los usuarios, instrumentos, órdenes y datos de mercado que crean. Usá una base descartable separada de desarrollo:
+
+```bash
+docker compose exec -T db createdb -U postgres cocos_challenge_test
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d cocos_challenge_test < ../database.sql
+TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cocos_challenge_test?schema=public" npm run test:concurrency
+```
+
+La suite comprueba las seis intercalaciones concurrentes de compra/venta/cancelación requeridas, además de liberación de reservas, validaciones de entrada, límites monetarios, redondeo por centavos, instrumentos MONEDA y órdenes LIMIT sin precio de mercado.

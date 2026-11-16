@@ -19,7 +19,7 @@ export class OrderResponseDto {
       order.instrumentId,
       order.userId,
       order.size,
-      order.price,
+      order.price === null ? null : Number(order.price),
       order.type,
       order.side,
       order.status,

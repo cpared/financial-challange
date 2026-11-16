@@ -17,12 +17,7 @@ describe('OrdersRepository', () => {
     await transaction.$disconnect();
   });
 
-  it('maps account, instrument, latest market data, and order history', async () => {
-    jest.spyOn(transaction.user, 'findUnique').mockResolvedValue({
-      id: 1,
-      email: null,
-      accountNumber: null,
-    });
+  it('locks the account and maps exact database aggregates with latest market data', async () => {
     const instrumentRecord = {
       id: 47,
       ticker: 'BBAR',
@@ -44,31 +39,33 @@ describe('OrdersRepository', () => {
     jest
       .spyOn(transaction.instrument, 'findUnique')
       .mockResolvedValue(instrumentRecord);
-    jest.spyOn(transaction.order, 'findMany').mockResolvedValue([
-      {
-        id: 1,
-        instrumentId: 66,
-        userId: 1,
-        size: 1000,
-        price: new Prisma.Decimal(1),
-        type: 'MARKET',
-        side: 'CASH_IN',
-        status: OrderStatus.Filled,
-        datetime: new Date('2026-01-01'),
-      },
-    ]);
+    const rawQuerySpy = jest.spyOn(transaction, '$queryRaw');
+    rawQuerySpy
+      .mockResolvedValueOnce([{ id: 1 }] as never)
+      .mockResolvedValueOnce([
+        {
+          cashBalanceInCents: '100000',
+          reservedCashInCents: '10000',
+          effectiveQuantity: '8',
+          reservedQuantity: '2',
+          missingTradePriceCount: '0',
+        },
+      ] as never);
 
-    const result = await repository.getOrderContext(
-      1,
-      47,
-      transaction as Prisma.TransactionClient,
+    await expect(repository.acquireAccountLock(1, transaction)).resolves.toBe(
+      true,
     );
+    const result = await repository.getOrderContext(1, 47, transaction);
 
     expect(result).toMatchObject({
-      userExists: true,
-      instrument: { id: 47, close: 100 },
-      orders: [{ instrumentId: 66, size: 1000, price: 1, side: 'CASH_IN' }],
+      instrument: { id: 47, close: '100.00' },
+      cashBalanceInCents: '100000',
+      reservedCashInCents: '10000',
+      effectiveQuantity: '8',
+      reservedQuantity: '2',
+      hasMissingTradePrice: false,
     });
+    expect(rawQuerySpy).toHaveBeenCalledTimes(2);
   });
 
   it('persists an order with the provided calculated fields', async () => {
@@ -90,13 +87,13 @@ describe('OrdersRepository', () => {
         1,
         47,
         3,
-        100,
+        '100.00',
         'LIMIT',
         'BUY',
         OrderStatus.New,
         datetime,
       ),
-      transaction as Prisma.TransactionClient,
+      transaction,
     );
 
     expect(result).toMatchObject({
@@ -104,7 +101,7 @@ describe('OrdersRepository', () => {
       userId: 1,
       instrumentId: 47,
       size: 3,
-      price: 100,
+      price: '100.00',
       status: OrderStatus.New,
     });
   });
@@ -125,11 +122,7 @@ describe('OrdersRepository', () => {
       datetime: new Date('2026-01-01'),
     });
 
-    const result = await repository.cancel(
-      1,
-      5,
-      transaction as Prisma.TransactionClient,
-    );
+    const result = await repository.cancel(1, 5, transaction);
 
     expect(result?.status).toBe(OrderStatus.Cancelled);
     expect(updateManySpy).toHaveBeenCalledWith({

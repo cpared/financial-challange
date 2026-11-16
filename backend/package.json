@@ -14,10 +14,11 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "oxlint --type-aware src/ test/ jest.config.cjs",
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --testPathIgnorePatterns=orders-concurrency.e2e-spec",
     "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
     "test:cov": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
-    "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --testPathPatterns=e2e-spec",
+    "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --testPathPatterns=e2e-spec --testPathIgnorePatterns=orders-concurrency.e2e-spec",
+    "test:concurrency": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --testPathPatterns=orders-concurrency.e2e-spec",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"

@@ -27,6 +27,7 @@ export class PortfolioService {
 
     const cashBalance = calculateCashBalance(portfolio.orders);
     const quantities = new Map<number, number>();
+    let totalMarketValueInCents = 0n;
     const instruments = new Map<
       number,
       NonNullable<(typeof portfolio.orders)[number]['instrument']>
@@ -70,7 +71,8 @@ export class PortfolioService {
       }
 
       const close = instrument.close;
-      const marketValueInCents = quantity * toCents(close);
+      const marketValueInCents = BigInt(quantity) * toCents(close);
+      totalMarketValueInCents += marketValueInCents;
       const dailyReturnPercent =
         instrument.previousClose !== null && instrument.previousClose > 0
           ? Number(
@@ -96,11 +98,6 @@ export class PortfolioService {
     positions.sort((left, right) =>
       (left.ticker ?? '').localeCompare(right.ticker ?? ''),
     );
-    const totalMarketValueInCents = positions.reduce(
-      (total, position) => total + toCents(position.marketValueArs),
-      0,
-    );
-
     return PortfolioServiceResponseDto.fromRepository(
       portfolio,
       fromCents(cashBalance.cashBalanceInCents + totalMarketValueInCents),

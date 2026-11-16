@@ -6,7 +6,7 @@ export class OrderServiceResponseDto {
     public readonly instrumentId: number | null,
     public readonly userId: number | null,
     public readonly size: number | null,
-    public readonly price: number | null,
+    public readonly price: string | null,
     public readonly type: string | null,
     public readonly side: string | null,
     public readonly status: string | null,

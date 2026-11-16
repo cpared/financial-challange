@@ -55,6 +55,7 @@ export class CreateOrderRequestDto {
   @ValidateIf((_request, value: unknown) => value !== undefined)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(99_999_999.99)
   amountArs?: number;
 
   @ValidateIf((_request, value: unknown) => value !== undefined)
