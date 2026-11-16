@@ -4,7 +4,7 @@ async function bootstrap(): Promise<void> {
   initializeTelemetry();
   const [
     { NestFactory },
-    { ValidationPipe },
+    { RequestMethod, ValidationPipe },
     { ConfigService },
     { AppModule },
     { ContextLogger },
@@ -17,7 +17,9 @@ async function bootstrap(): Promise<void> {
   ]);
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(ContextLogger));
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: 'ping', method: RequestMethod.GET }],
+  });
   app.enableCors({
     origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],

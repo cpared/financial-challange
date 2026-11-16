@@ -21,6 +21,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     if (host.getType() !== 'http') {
+      this.logger.event('error', 'Unhandled application exception', {
+        exceptionType:
+          exception instanceof Error ? exception.name : 'UnknownError',
+      });
       throw exception;
     }
 
@@ -56,17 +60,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const route = request.route
       ? `${request.baseUrl ?? ''}${request.route.path}`
       : 'unmatched';
-    this.logger.event(
-      statusCode >= HttpStatus.INTERNAL_SERVER_ERROR ? 'error' : 'warn',
-      'HTTP request failed',
-      {
-        method: request.method,
-        route,
-        statusCode,
-        exceptionType:
-          exception instanceof Error ? exception.name : 'UnknownError',
-      },
-    );
+    this.logger.event('error', 'HTTP request failed', {
+      method: request.method,
+      route,
+      statusCode,
+      exceptionType:
+        exception instanceof Error ? exception.name : 'UnknownError',
+    });
 
     if (!httpAdapter.isHeadersSent(response)) {
       httpAdapter.reply(response, responseBody, statusCode);

@@ -1,0 +1,8 @@
+@baseUrl = http://localhost:3000
+
+### Liveness check - application is running (200)
+GET {{baseUrl}}/ping
+
+### Liveness check - caller supplied request ID is echoed (200)
+GET {{baseUrl}}/ping
+X-Request-ID: health-check-1

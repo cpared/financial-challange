@@ -88,12 +88,20 @@ en esta API; por eso el contexto no asigna `userId`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
+| `GET` | `/ping` | Liveness check del proceso NestJS; no valida PostgreSQL ni dependencias externas |
 | `GET` | `/api/v1/users/:userId/portfolio` | Efectivo, valor total y posiciones del usuario |
 | `GET` | `/api/v1/instruments?query=...` | Búsqueda parcial case-insensitive por ticker y nombre |
 | `POST` | `/api/v1/users/:userId/orders` | Enviar una orden MARKET o LIMIT |
 | `PATCH` | `/api/v1/users/:userId/orders/:orderId/cancel` | Cancelar una orden NEW |
 
 Los ejemplos de éxito y error se mantienen junto a cada feature en `src/modules/*/requests/request.http`.
+
+Las excepciones lanzadas en solicitudes HTTP se registran una sola vez por el
+filtro global como logs JSON de nivel `error`, incluidos errores de validación y
+de negocio 4xx. Los errores inesperados se responden con un mensaje genérico;
+el log registra el tipo de excepción y el contexto, no su mensaje interno.
+`/ping` es un healthcheck de liveness: seguirá respondiendo aunque PostgreSQL
+no esté disponible.
 
 El portfolio conserva `dailyReturnPercent` como variación diaria del instrumento. Cada posición también incluye `totalReturnArs` y `totalReturnPercent`, calculados sobre el valor de mercado actual y el costo de adquisición de las acciones remanentes. Una posición sin costo de adquisición reporta `totalReturnPercent: null`.
 

@@ -5,6 +5,7 @@ import { InstrumentsModule } from './modules/instruments/instruments.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { PortfolioModule } from './modules/portfolio/portfolio.module.js';
 import { ObservabilityModule } from './common/observability/observability.module.js';
+import { HealthModule } from './modules/health/health.module.js';
 
 function validateEnvironment(
   config: Record<string, unknown>,
@@ -37,6 +38,7 @@ function validateEnvironment(
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     DatabaseModule,
     ObservabilityModule,
+    HealthModule,
     InstrumentsModule,
     OrdersModule,
     PortfolioModule,

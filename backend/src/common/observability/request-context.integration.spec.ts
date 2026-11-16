@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
+import { jest } from '@jest/globals';
 import request from 'supertest';
 import { ObservabilityModule } from './observability.module.js';
 import { RequestContextService } from './request-context.service.js';
@@ -88,7 +89,10 @@ describe('Request context HTTP integration', () => {
     expect(first.body.traceId).not.toBe(second.body.traceId);
   });
 
-  it('keeps Nest business exception response bodies unchanged', async () => {
+  it('logs client exceptions as errors and keeps their response bodies unchanged', async () => {
+    const output = jest
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
     const response = await request(app.getHttpServer())
       .get('/request-context-test/error')
       .set('X-Request-ID', 'error-request')
@@ -100,16 +104,34 @@ describe('Request context HTTP integration', () => {
       error: 'Bad Request',
     });
     expect(response.headers['x-request-id']).toBe('error-request');
+    expect(output).toHaveBeenCalledWith(
+      expect.stringContaining('"level":"error"'),
+    );
+    output.mockRestore();
   });
 
   it('does not expose unexpected internal exception details', async () => {
+    const output = jest
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
     const response = await request(app.getHttpServer())
       .get('/request-context-test/internal-error')
+      .set('X-Request-ID', 'internal-error-request')
       .expect(500);
 
     expect(response.body).toEqual({
       statusCode: 500,
       message: 'Internal server error',
     });
+    expect(output).toHaveBeenCalledWith(
+      expect.stringContaining('"requestId":"internal-error-request","traceId"'),
+    );
+    expect(output).toHaveBeenCalledWith(
+      expect.stringContaining('"level":"error"'),
+    );
+    expect(output.mock.calls.flat().join('')).not.toContain(
+      'sensitive database failure',
+    );
+    output.mockRestore();
   });
 });

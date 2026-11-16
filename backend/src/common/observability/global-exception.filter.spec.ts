@@ -59,7 +59,7 @@ describe('GlobalExceptionFilter', () => {
       400,
     );
     expect(logEvent).toHaveBeenCalledWith(
-      'warn',
+      'error',
       'HTTP request failed',
       expect.objectContaining({
         method: 'GET',
@@ -70,12 +70,38 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('hides unknown exception details from the HTTP response', () => {
+    const logEvent = jest.spyOn(logger, 'event');
     filter.catch(new Error('database connection credential'), host());
 
     expect(adapter.reply).toHaveBeenCalledWith(
       response,
       { statusCode: 500, message: 'Internal server error' },
       500,
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      'error',
+      'HTTP request failed',
+      expect.objectContaining({
+        exceptionType: 'Error',
+        statusCode: 500,
+      }),
+    );
+    expect(JSON.stringify(logEvent.mock.calls)).not.toContain(
+      'database connection credential',
+    );
+  });
+
+  it('logs non-HTTP exceptions before rethrowing them', () => {
+    const logEvent = jest.spyOn(logger, 'event');
+    const exception = new Error('sensitive background failure');
+
+    expect(() =>
+      filter.catch(exception, { getType: () => 'rpc' } as never),
+    ).toThrow(exception);
+    expect(logEvent).toHaveBeenCalledWith(
+      'error',
+      'Unhandled application exception',
+      { exceptionType: 'Error' },
     );
   });
 });
