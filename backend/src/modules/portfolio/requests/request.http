@@ -1,0 +1,15 @@
+@baseUrl = http://localhost:3000/api/v1
+@userId = 1
+
+### Get portfolio - user with seeded activity (200)
+GET {{baseUrl}}/users/{{userId}}/portfolio
+
+### Get portfolio - user without activity (200, zero balance and no positions)
+GET {{baseUrl}}/users/2/portfolio
+
+### Get portfolio - user does not exist (404)
+GET {{baseUrl}}/users/999999/portfolio
+
+### Get portfolio - held instrument has no current market data (503)
+### This requires removing marketdata for an instrument held by this user.
+GET {{baseUrl}}/users/{{userId}}/portfolio

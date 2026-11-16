@@ -1,0 +1,138 @@
+@baseUrl = http://localhost:3000/api/v1
+@userId = 1
+@instrumentId = 47
+@newOrderId = 5
+
+### Create a MARKET BUY by quantity (201, FILLED)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Create a MARKET SELL by pesos; supplied price is ignored (201, FILLED)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "SELL",
+  "type": "MARKET",
+  "amountArs": 9200,
+  "price": 1
+}
+
+### Create a LIMIT BUY by amount (201, NEW)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "LIMIT",
+  "amountArs": 10000,
+  "price": 800
+}
+
+### Create an unaffordable order (201, persisted as REJECTED)
+POST {{baseUrl}}/users/2/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Sell more shares than available (201, persisted as REJECTED)
+POST {{baseUrl}}/users/2/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "SELL",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Invalid request: LIMIT price is required (400)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "LIMIT",
+  "quantity": 1
+}
+
+### Invalid request: quantity and amountArs are both supplied (400)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1,
+  "amountArs": 1000
+}
+
+### Invalid request: amount does not cover one share (400)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "amountArs": 1
+}
+
+### User does not exist (404)
+POST {{baseUrl}}/users/999999/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Instrument does not exist (404)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 999999,
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Instrument has no latest close price (409)
+### This requires removing marketdata for the selected instrument.
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": {{instrumentId}},
+  "side": "BUY",
+  "type": "MARKET",
+  "quantity": 1
+}
+
+### Cancel a NEW order (200, CANCELLED)
+PATCH {{baseUrl}}/users/{{userId}}/orders/{{newOrderId}}/cancel
+
+### Cancel an order that is not NEW (409)
+PATCH {{baseUrl}}/users/{{userId}}/orders/1/cancel
+
+### Order does not exist for this user (404)
+PATCH {{baseUrl}}/users/{{userId}}/orders/999999/cancel

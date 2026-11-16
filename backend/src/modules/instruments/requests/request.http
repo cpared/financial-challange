@@ -1,0 +1,16 @@
+@baseUrl = http://localhost:3000/api/v1
+
+### Search instruments - partial ticker match (200)
+GET {{baseUrl}}/instruments?query=BB
+
+### Search instruments - partial name match (200)
+GET {{baseUrl}}/instruments?query=patagonia
+
+### Search instruments - no matches (200, empty array)
+GET {{baseUrl}}/instruments?query=not-a-real-instrument
+
+### Search instruments - missing query (400)
+GET {{baseUrl}}/instruments
+
+### Search instruments - blank query (400)
+GET {{baseUrl}}/instruments?query=%20%20
