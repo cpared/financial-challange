@@ -7,7 +7,13 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service.js';
-import { centsToDecimal, toCents } from '../../../common/utils/cash-balance.js';
+import { centsToDecimal, toCents } from '../../../common/utils/money.js';
+import { CashCalculator } from '../../../common/domain/cash/cash-calculator.js';
+import { PositionQuantityCalculator } from '../../../common/domain/positions/position-quantity-calculator.js';
+import {
+  InvalidFinancialDataError,
+  MissingTradePriceError,
+} from '../../../common/domain/financial-data-error.js';
 import {
   OrderSide,
   OrderStatus,
@@ -26,6 +32,8 @@ export class OrdersService {
   constructor(
     private readonly ordersRepository: OrdersRepository,
     private readonly prisma: PrismaService,
+    private readonly cashCalculator: CashCalculator,
+    private readonly positionQuantityCalculator: PositionQuantityCalculator,
   ) {}
 
   async create(
@@ -88,10 +96,28 @@ export class OrdersService {
         priceInCents = this.parsePositiveMoney(input.limitPrice, 'Limit price');
       }
 
-      if (context.hasMissingTradePrice) {
-        throw new InternalServerErrorException(
-          'An existing trade order has no recorded price.',
-        );
+      let availableCashInCents: bigint;
+      let availableQuantity: bigint;
+      try {
+        availableCashInCents = this.cashCalculator.calculate(
+          context.orderMovements,
+        ).availableCashInCents;
+        availableQuantity =
+          this.positionQuantityCalculator
+            .calculate(context.orderMovements, input.instrumentId)
+            .get(input.instrumentId)?.availableQuantity ?? 0n;
+      } catch (error) {
+        if (error instanceof MissingTradePriceError) {
+          throw new InternalServerErrorException(
+            'An existing trade order has no recorded price.',
+          );
+        }
+        if (error instanceof InvalidFinancialDataError) {
+          throw new InternalServerErrorException(
+            'Existing order data is inconsistent and cannot be used.',
+          );
+        }
+        throw error;
       }
 
       let requestedSize: bigint;
@@ -117,11 +143,6 @@ export class OrdersService {
         );
       }
 
-      const availableCashInCents =
-        BigInt(context.cashBalanceInCents) -
-        BigInt(context.reservedCashInCents);
-      const availableQuantity =
-        BigInt(context.effectiveQuantity) - BigInt(context.reservedQuantity);
       const requiredCashInCents = requestedSize * priceInCents;
       const hasEnoughResources =
         input.side === OrderSide.Buy

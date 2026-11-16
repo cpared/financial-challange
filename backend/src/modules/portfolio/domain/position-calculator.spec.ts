@@ -28,7 +28,9 @@ describe('PositionCalculator', () => {
     const openPosition: ValidatedOpenPosition = {
       instrumentId: 47,
       instrument,
+      quantity: 2n,
       costBasis,
+      availableQuantity: 2n,
       closeInCents: 11_000n,
       previousCloseInCents: 10_000n,
     };

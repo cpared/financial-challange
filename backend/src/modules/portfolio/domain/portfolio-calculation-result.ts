@@ -3,6 +3,7 @@ export interface CalculatedPortfolioPosition {
   readonly ticker: string | null;
   readonly name: string | null;
   readonly quantity: number;
+  readonly availableQuantity: bigint;
   readonly marketValueArs: string;
   readonly totalReturnArs: string;
   readonly totalReturnPercent: string | null;

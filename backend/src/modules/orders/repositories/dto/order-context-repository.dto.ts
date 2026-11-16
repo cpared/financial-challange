@@ -10,10 +10,16 @@ export class InstrumentOrderContextRepositoryDto {
 export class OrderContextRepositoryDto {
   constructor(
     public readonly instrument: InstrumentOrderContextRepositoryDto | null,
-    public readonly cashBalanceInCents: string,
-    public readonly reservedCashInCents: string,
-    public readonly effectiveQuantity: string,
-    public readonly reservedQuantity: string,
-    public readonly hasMissingTradePrice: boolean,
+    public readonly orderMovements: OrderMovementRepositoryDto[],
+  ) {}
+}
+
+export class OrderMovementRepositoryDto {
+  constructor(
+    public readonly instrumentId: number | null,
+    public readonly size: number | null,
+    public readonly price: string | null,
+    public readonly side: string | null,
+    public readonly status: string | null,
   ) {}
 }

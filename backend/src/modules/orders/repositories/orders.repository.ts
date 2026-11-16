@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrderStatus } from '../../../common/enums/order.enums.js';
 import { CreateOrderRepositoryInputDto } from './dto/create-order-repository-input.dto.js';
-import { OrderContextRepositoryDto } from './dto/order-context-repository.dto.js';
-import { InstrumentOrderContextRepositoryDto } from './dto/order-context-repository.dto.js';
+import {
+  InstrumentOrderContextRepositoryDto,
+  OrderContextRepositoryDto,
+  OrderMovementRepositoryDto,
+} from './dto/order-context-repository.dto.js';
 import { OrderRepositoryResponseDto } from './dto/order-repository-response.dto.js';
 
 @Injectable()
@@ -32,57 +35,19 @@ export class OrdersRepository {
         },
       },
     });
-    const [account] = await transaction.$queryRaw<
-      Array<{
-        cashBalanceInCents: string;
-        reservedCashInCents: string;
-        effectiveQuantity: string;
-        reservedQuantity: string;
-        missingTradePriceCount: string;
-      }>
-    >(
-      Prisma.sql`
-        SELECT
-          TRUNC(COALESCE(SUM(CASE
-            WHEN side = 'CASH_IN' AND status = 'FILLED'
-              THEN COALESCE(size, 0)::numeric * 100
-            WHEN side = 'CASH_OUT' AND status = 'FILLED'
-              THEN -COALESCE(size, 0)::numeric * 100
-            WHEN side = 'BUY' AND status = 'FILLED'
-              THEN -COALESCE(size, 0)::numeric * price * 100
-            WHEN side = 'SELL' AND status = 'FILLED'
-              THEN COALESCE(size, 0)::numeric * price * 100
-            ELSE 0::numeric
-          END), 0))::text AS "cashBalanceInCents",
-          TRUNC(COALESCE(SUM(CASE
-            WHEN side = 'BUY' AND status = 'NEW'
-              THEN COALESCE(size, 0)::numeric * price * 100
-            ELSE 0::numeric
-          END), 0))::text AS "reservedCashInCents",
-          COALESCE(SUM(CASE
-            WHEN instrumentid = ${instrumentId} AND side = 'BUY' AND status = 'FILLED'
-              THEN COALESCE(size, 0)::numeric
-            WHEN instrumentid = ${instrumentId} AND side = 'SELL' AND status = 'FILLED'
-              THEN -COALESCE(size, 0)::numeric
-            ELSE 0::numeric
-          END), 0)::text AS "effectiveQuantity",
-          COALESCE(SUM(CASE
-            WHEN instrumentid = ${instrumentId} AND side = 'SELL' AND status = 'NEW'
-              THEN COALESCE(size, 0)::numeric
-            ELSE 0::numeric
-          END), 0)::text AS "reservedQuantity",
-          COUNT(*) FILTER (
-            WHERE (status = 'FILLED' AND side IN ('BUY', 'SELL')
-              OR status = 'NEW' AND side = 'BUY')
-              AND price IS NULL
-          )::text AS "missingTradePriceCount"
-        FROM orders
-        WHERE userid = ${userId}
-      `,
-    );
-    if (!account) {
-      throw new Error('Account balance aggregation returned no result.');
-    }
+    const orders = await transaction.order.findMany({
+      where: {
+        userId,
+        status: { in: [OrderStatus.Filled, OrderStatus.New] },
+      },
+      select: {
+        instrumentId: true,
+        size: true,
+        price: true,
+        side: true,
+        status: true,
+      },
+    });
 
     return new OrderContextRepositoryDto(
       instrument
@@ -93,11 +58,16 @@ export class OrdersRepository {
             instrument.marketdata[0]?.close?.toFixed(2) ?? null,
           )
         : null,
-      account.cashBalanceInCents,
-      account.reservedCashInCents,
-      account.effectiveQuantity,
-      account.reservedQuantity,
-      account.missingTradePriceCount !== '0',
+      orders.map(
+        (order) =>
+          new OrderMovementRepositoryDto(
+            order.instrumentId,
+            order.size,
+            order.price?.toFixed(2) ?? null,
+            order.side,
+            order.status,
+          ),
+      ),
     );
   }
 

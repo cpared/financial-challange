@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { OrderSide, OrderStatus } from '../../../common/enums/order.enums.js';
-import { toCents } from '../../../common/utils/cash-balance.js';
+import {
+  InvalidFinancialDataError,
+  parseOrderSize,
+} from '../../../common/domain/financial-data-error.js';
+import { toCents } from '../../../common/utils/money.js';
+import type { PositionQuantity } from '../../../common/domain/positions/position.types.js';
 import {
   PortfolioInstrumentRepositoryDto,
   PortfolioOrderRepositoryDto,
@@ -14,7 +19,6 @@ import {
   PortfolioMarketDataUnavailableError,
 } from './portfolio-errors.js';
 
-const MAX_ORDER_SIZE = 2_147_483_647;
 const MAX_NUMERIC_CENTS = 9_999_999_999n;
 const MAX_API_CENTS = 4_503_599_627_370_496n;
 
@@ -26,7 +30,9 @@ export interface ValidatedPortfolioData {
 export interface ValidatedOpenPosition {
   readonly instrumentId: number;
   readonly instrument: PortfolioInstrumentRepositoryDto;
+  readonly quantity: bigint;
   readonly costBasis: PositionCostBasis;
+  readonly availableQuantity: bigint;
   readonly closeInCents: bigint;
   readonly previousCloseInCents: bigint;
 }
@@ -41,13 +47,10 @@ export class PortfolioValidator {
 
     for (const order of orders) {
       if (this.isCashMovement(order)) {
-        this.validateCashMovement(order);
         continue;
       }
 
       if (order.status === OrderStatus.New && order.side === OrderSide.Buy) {
-        this.validateQuantity(order.size);
-        this.parsePositiveMoney(order.price);
         continue;
       }
 
@@ -58,7 +61,15 @@ export class PortfolioValidator {
         continue;
       }
 
-      const quantity = this.validateQuantity(order.size);
+      let quantity: bigint;
+      try {
+        quantity = parseOrderSize(order.size);
+      } catch (error) {
+        if (error instanceof InvalidFinancialDataError) {
+          throw new PortfolioDataIntegrityError();
+        }
+        throw error;
+      }
       if (order.instrumentId === null || order.instrumentId <= 0) {
         throw new PortfolioDataIntegrityError();
       }
@@ -80,7 +91,7 @@ export class PortfolioValidator {
         orderId: order.id,
         datetime: order.datetime,
         side: order.side,
-        quantity: BigInt(quantity),
+        quantity,
         priceInCents,
       });
     }
@@ -96,16 +107,26 @@ export class PortfolioValidator {
   validateOpenPositions(
     costBases: ReadonlyMap<number, PositionCostBasis>,
     instruments: ReadonlyMap<number, PortfolioInstrumentRepositoryDto>,
+    positionQuantities: ReadonlyMap<number, PositionQuantity>,
   ): ValidatedOpenPosition[] {
     const positions: ValidatedOpenPosition[] = [];
     for (const [instrumentId, costBasis] of costBases) {
-      if (costBasis.quantity < 0n) {
+      const positionQuantity = positionQuantities.get(instrumentId);
+      if (
+        !positionQuantity ||
+        positionQuantity.effectiveQuantity !== costBasis.quantity
+      ) {
         throw new PortfolioDataIntegrityError();
       }
-      if (costBasis.quantity === 0n) {
+      if (positionQuantity.effectiveQuantity < 0n) {
+        throw new PortfolioDataIntegrityError();
+      }
+      if (positionQuantity.effectiveQuantity === 0n) {
         continue;
       }
-      if (costBasis.quantity > BigInt(Number.MAX_SAFE_INTEGER)) {
+      if (
+        positionQuantity.effectiveQuantity > BigInt(Number.MAX_SAFE_INTEGER)
+      ) {
         throw new PortfolioDataIntegrityError();
       }
 
@@ -129,7 +150,9 @@ export class PortfolioValidator {
       positions.push({
         instrumentId,
         instrument,
+        quantity: positionQuantity.effectiveQuantity,
         costBasis,
+        availableQuantity: positionQuantity.availableQuantity,
         closeInCents,
         previousCloseInCents,
       });
@@ -143,24 +166,6 @@ export class PortfolioValidator {
 
   private isCashMovement(order: PortfolioOrderRepositoryDto): boolean {
     return order.side === 'CASH_IN' || order.side === 'CASH_OUT';
-  }
-
-  private validateCashMovement(order: PortfolioOrderRepositoryDto): void {
-    if (order.status === OrderStatus.Filled) {
-      this.validateQuantity(order.size);
-    }
-  }
-
-  private validateQuantity(size: number | null): number {
-    if (
-      size === null ||
-      !Number.isInteger(size) ||
-      size <= 0 ||
-      size > MAX_ORDER_SIZE
-    ) {
-      throw new PortfolioDataIntegrityError();
-    }
-    return size;
   }
 
   private parsePositiveMoney(value: number | string | null): bigint {

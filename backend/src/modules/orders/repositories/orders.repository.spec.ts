@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { OrderStatus } from '../../../common/enums/order.enums.js';
+import { OrderSide, OrderStatus } from '../../../common/enums/order.enums.js';
 import { CreateOrderRepositoryInputDto } from './dto/create-order-repository-input.dto.js';
 import { OrdersRepository } from './orders.repository.js';
 
@@ -17,7 +17,7 @@ describe('OrdersRepository', () => {
     await transaction.$disconnect();
   });
 
-  it('locks the account and maps exact database aggregates with latest market data', async () => {
+  it('locks the account and maps order movements with latest market data', async () => {
     const instrumentRecord = {
       id: 47,
       ticker: 'BBAR',
@@ -39,18 +39,35 @@ describe('OrdersRepository', () => {
     jest
       .spyOn(transaction.instrument, 'findUnique')
       .mockResolvedValue(instrumentRecord);
-    const rawQuerySpy = jest.spyOn(transaction, '$queryRaw');
-    rawQuerySpy
-      .mockResolvedValueOnce([{ id: 1 }] as never)
-      .mockResolvedValueOnce([
+    const rawQuerySpy = jest
+      .spyOn(transaction, '$queryRaw')
+      .mockResolvedValueOnce([{ id: 1 }] as never);
+    const findManySpy = jest
+      .spyOn(transaction.order, 'findMany')
+      .mockResolvedValue([
         {
-          cashBalanceInCents: '100000',
-          reservedCashInCents: '10000',
-          effectiveQuantity: '8',
-          reservedQuantity: '2',
-          missingTradePriceCount: '0',
+          id: 1,
+          type: 'MARKET',
+          instrumentId: 47,
+          userId: 1,
+          size: 8,
+          price: new Prisma.Decimal(100),
+          side: OrderSide.Buy,
+          status: OrderStatus.Filled,
+          datetime: new Date('2026-01-01'),
         },
-      ] as never);
+        {
+          id: 2,
+          type: 'LIMIT',
+          instrumentId: 47,
+          userId: 1,
+          size: 1,
+          price: new Prisma.Decimal(100),
+          side: OrderSide.Buy,
+          status: OrderStatus.New,
+          datetime: new Date('2026-01-02'),
+        },
+      ]);
 
     await expect(repository.acquireAccountLock(1, transaction)).resolves.toBe(
       true,
@@ -59,13 +76,32 @@ describe('OrdersRepository', () => {
 
     expect(result).toMatchObject({
       instrument: { id: 47, close: '100.00' },
-      cashBalanceInCents: '100000',
-      reservedCashInCents: '10000',
-      effectiveQuantity: '8',
-      reservedQuantity: '2',
-      hasMissingTradePrice: false,
+      orderMovements: [
+        {
+          instrumentId: 47,
+          size: 8,
+          price: '100.00',
+          side: OrderSide.Buy,
+          status: OrderStatus.Filled,
+        },
+        {
+          instrumentId: 47,
+          size: 1,
+          price: '100.00',
+          side: OrderSide.Buy,
+          status: OrderStatus.New,
+        },
+      ],
     });
-    expect(rawQuerySpy).toHaveBeenCalledTimes(2);
+    expect(rawQuerySpy).toHaveBeenCalledTimes(1);
+    expect(findManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 1,
+          status: { in: [OrderStatus.Filled, OrderStatus.New] },
+        },
+      }),
+    );
   });
 
   it('persists an order with the provided calculated fields', async () => {

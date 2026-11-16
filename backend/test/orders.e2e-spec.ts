@@ -6,8 +6,11 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/database/prisma.service.js';
 import { OrdersRepository } from '../src/modules/orders/repositories/orders.repository.js';
-import { OrderContextRepositoryDto } from '../src/modules/orders/repositories/dto/order-context-repository.dto.js';
-import { InstrumentOrderContextRepositoryDto } from '../src/modules/orders/repositories/dto/order-context-repository.dto.js';
+import {
+  InstrumentOrderContextRepositoryDto,
+  OrderContextRepositoryDto,
+  OrderMovementRepositoryDto,
+} from '../src/modules/orders/repositories/dto/order-context-repository.dto.js';
 import { CreateOrderRepositoryInputDto } from '../src/modules/orders/repositories/dto/create-order-repository-input.dto.js';
 import { OrderRepositoryResponseDto } from '../src/modules/orders/repositories/dto/order-repository-response.dto.js';
 
@@ -42,11 +45,7 @@ describe('Orders API (e2e)', () => {
           'ACCIONES',
           '100.00',
         ),
-        '100000',
-        '0',
-        '0',
-        '0',
-        false,
+        [new OrderMovementRepositoryDto(null, 1000, null, 'CASH_IN', 'FILLED')],
       ),
     );
     ordersRepositoryMock.create.mockImplementation(

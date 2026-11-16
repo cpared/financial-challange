@@ -15,7 +15,8 @@ import {
 import { PortfolioService } from './portfolio.service.js';
 import { PortfolioCalculator } from '../domain/portfolio-calculator.js';
 import { PortfolioValidator } from '../domain/portfolio-validator.js';
-import { CashCalculator } from '../domain/cash-calculator.js';
+import { CashCalculator } from '../../../common/domain/cash/cash-calculator.js';
+import { PositionQuantityCalculator } from '../../../common/domain/positions/position-quantity-calculator.js';
 import { PositionCalculator } from '../domain/position-calculator.js';
 import { COST_BASIS_STRATEGY } from '../domain/cost-basis/cost-basis.strategy.js';
 import { WeightedAverageStrategy } from '../domain/cost-basis/weighted-average.strategy.js';
@@ -38,6 +39,7 @@ describe('PortfolioService', () => {
         PortfolioCalculator,
         PortfolioValidator,
         CashCalculator,
+        PositionQuantityCalculator,
         PositionCalculator,
         WeightedAverageStrategy,
         { provide: COST_BASIS_STRATEGY, useExisting: WeightedAverageStrategy },

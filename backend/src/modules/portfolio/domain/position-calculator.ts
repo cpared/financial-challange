@@ -17,6 +17,7 @@ export interface CalculatedPosition {
   readonly ticker: string | null;
   readonly name: string | null;
   readonly quantity: number;
+  readonly availableQuantity: bigint;
   readonly marketValueInCents: bigint;
   readonly totalReturnArs: string;
   readonly totalReturnPercent: string | null;
@@ -40,8 +41,7 @@ export class PositionCalculator {
     positions: readonly ValidatedOpenPosition[],
   ): CalculatedPosition[] {
     return positions.map((position) => {
-      const marketValueInCents =
-        position.costBasis.quantity * position.closeInCents;
+      const marketValueInCents = position.quantity * position.closeInCents;
       const totalReturn = calculateTotalPositionReturn(
         marketValueInCents,
         position.costBasis.acquisitionCostInCents,
@@ -50,7 +50,8 @@ export class PositionCalculator {
         instrumentId: position.instrumentId,
         ticker: position.instrument.ticker,
         name: position.instrument.name,
-        quantity: Number(position.costBasis.quantity),
+        quantity: Number(position.quantity),
+        availableQuantity: position.availableQuantity,
         marketValueInCents,
         totalReturnArs: formatRationalCents(totalReturn.profitInCents),
         totalReturnPercent: totalReturn.returnPercent,
@@ -75,6 +76,7 @@ export class PositionCalculator {
       ticker: position.ticker,
       name: position.name,
       quantity: position.quantity,
+      availableQuantity: position.availableQuantity,
       marketValueArs: position.marketValueInCents,
       totalReturnArs: position.totalReturnArs,
       totalReturnPercent: position.totalReturnPercent,

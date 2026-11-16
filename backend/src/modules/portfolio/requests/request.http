@@ -2,6 +2,9 @@
 @userId = 1
 
 ### Get portfolio - user with seeded activity (200)
+### Requires consistent FILLED trades for every instrument.
+### The checked-in seed currently has 20 FILLED BUY and 30 FILLED SELL for instrument 31.
+### This creates a negative position and correctly returns 500; BUY NEW orders do not count as holdings.
 GET {{baseUrl}}/users/{{userId}}/portfolio
 
 ### Response includes totalReturnArs/totalReturnPercent (position's unrealized return)
@@ -15,5 +18,5 @@ GET {{baseUrl}}/users/2/portfolio
 GET {{baseUrl}}/users/999999/portfolio
 
 ### Get portfolio - held instrument has no current market data (503)
-### This requires removing marketdata for an instrument held by this user.
+### Requires consistent FILLED trades first, then removing marketdata for an instrument with a positive net FILLED position.
 GET {{baseUrl}}/users/{{userId}}/portfolio
